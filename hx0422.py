@@ -135,7 +135,7 @@ else:
             reg_df = df[df["大区"] == region]
 
             if compare_metric in multi_choice_cols:
-                res = process_multi_choice(reg_df, compare_metric, top_n=6 if compare_metric == "对比车型" else None)
+                res = process_multi_choice(reg_df, compare_metric, top_n=10 if compare_metric == "对比车型" else None)
             else:
                 # 过滤（跳过）
                 filtered_series = reg_df[compare_metric][~reg_df[compare_metric].astype(str).isin(['(跳过)', '（跳过）'])]
