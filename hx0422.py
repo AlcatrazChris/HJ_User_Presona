@@ -135,22 +135,36 @@ else:
             reg_df = df[df["大区"] == region]
 
             if compare_metric in multi_choice_cols:
-                res = process_multi_choice(reg_df, compare_metric, top_n=10 if compare_metric == "对比车型" else None)
+                res = process_multi_choice(reg_df, compare_metric, top_n=6 if compare_metric == "对比车型" else None)
             else:
+                # 过滤（跳过）
                 filtered_series = reg_df[compare_metric][~reg_df[compare_metric].astype(str).isin(['(跳过)', '（跳过）'])]
                 res = filtered_series.value_counts().reset_index()
                 res.columns = [compare_metric, '人数']
 
+            # --- 关键修复 1：确保每个大区的数据都包含完整的分类定义 ---
+            if compare_metric in sort_orders:
+                # 转换为 Categorical 类型，确保即便人数为0的项也会被记录（此时是 NaN/0）
+                res[compare_metric] = pd.Categorical(res[compare_metric], categories=sort_orders[compare_metric],
+                                                     ordered=True)
+                # 补全缺失的类别（由于 value_counts 默认不输出 0 值的类别）
+                full_categories = pd.DataFrame({compare_metric: sort_orders[compare_metric]})
+                res = pd.merge(full_categories, res, on=compare_metric, how='left').fillna(0)
+
             if not res.empty:
                 res['大区'] = region
-                res['占比'] = res['人数'] / res['人数'].sum()
+                # 避免分母为 0
+                total = res['人数'].sum()
+                res['占比'] = res['人数'] / total if total > 0 else 0
                 comparison_data.append(res)
 
         if comparison_data:
             final_compare_df = pd.concat(comparison_data)
 
+            # --- 关键修复 2：构建 Plotly 强制排序字典 ---
             cat_orders_dict = {}
             if compare_metric in sort_orders:
+                # 这里的列表顺序决定了堆叠图从下到上的顺序
                 cat_orders_dict[compare_metric] = sort_orders[compare_metric]
 
             fig = px.bar(final_compare_df,
@@ -160,18 +174,18 @@ else:
                          title=f"各区域 {compare_metric} 结构对比",
                          orientation='v',
                          text_auto='.1%',
-                         category_orders=cat_orders_dict)
+                         category_orders=cat_orders_dict)  # 强制使用预设顺序
 
-            if len(selected_regions) == 1:
-                fig.update_traces(width=0.2)
-            elif len(selected_regions) == 2:
-                fig.update_traces(width=0.4)
-
-            fig.update_layout(yaxis_tickformat='.0%',
-                              xaxis_title="大区",
-                              yaxis_title="占比 (%)",
-                              legend_title=compare_metric,
-                              barmode='stack',
-                              height=650)
+            # 美化布局
+            fig.update_layout(
+                yaxis_tickformat='.0%',
+                xaxis_title="大区",
+                yaxis_title="占比 (%)",
+                legend_title=compare_metric,
+                barmode='stack',
+                height=650,
+                # 确保图例顺序与预设一致
+                legend={'traceorder': 'normal'}
+            )
 
             st.plotly_chart(fig, use_container_width=True)
